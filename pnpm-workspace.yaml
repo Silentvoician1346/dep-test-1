@@ -2,12 +2,14 @@ packages:
   - "fe"
 
 engineStrict: true
-packageManagerStrictVersion: true
 savePrefix: ""
 resolutionMode: time-based
 minimumReleaseAge: 1440
 blockExoticSubdeps: true
 strictDepBuilds: true
+
+overrides:
+  sharp: 0.34.4
 
 allowBuilds:
   sharp: false

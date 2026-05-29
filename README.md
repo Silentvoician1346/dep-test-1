@@ -19,6 +19,7 @@ Starts the API at `http://localhost:5000`.
 ## Useful URLs
 
 - Frontend: `http://localhost:3000`
+- API message endpoint: `http://localhost:5000/api/message`
 - API sample endpoint: `http://localhost:5000/WeatherForecast`
 - Swagger UI: `http://localhost:5000/swagger`
 - OpenAPI document: `http://localhost:5000/openapi/v1.json`
