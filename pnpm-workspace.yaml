@@ -1,0 +1,14 @@
+packages:
+  - "fe"
+
+engineStrict: true
+packageManagerStrictVersion: true
+savePrefix: ""
+resolutionMode: time-based
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+strictDepBuilds: true
+
+allowBuilds:
+  sharp: false
+  unrs-resolver: false

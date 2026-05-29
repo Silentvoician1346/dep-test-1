@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# production
+dist/
+build/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# .NET
+bin/
+obj/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
