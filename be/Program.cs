@@ -5,8 +5,11 @@ var builder = WebApplication.CreateBuilder(args);
 const string FrontendCorsPolicy = "Frontend";
 var port = Environment.GetEnvironmentVariable("PORT");
 var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
+                      Environment.GetEnvironmentVariable("FRONTEND_URL") ??
                       "http://localhost:3000,http://127.0.0.1:3000")
-    .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(origin => origin.TrimEnd('/'))
+    .ToArray();
 
 if (!string.IsNullOrWhiteSpace(port))
 {

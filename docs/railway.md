@@ -28,6 +28,9 @@ Variables:
 ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
 ```
 
+Set this variable on the backend service. The value must be the frontend origin
+only, with protocol and without a path.
+
 Railway provides `PORT`; the API binds to `0.0.0.0:$PORT`.
 
 Useful URLs after deploy:
