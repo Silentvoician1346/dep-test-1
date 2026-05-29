@@ -15,18 +15,24 @@ RUN pnpm --filter fe... install --frozen-lockfile
 
 FROM base AS builder
 
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/fe/node_modules ./fe/node_modules
 COPY --from=deps /app/fe/package.json ./fe/package.json
 COPY . .
+RUN test -n "$NEXT_PUBLIC_API_URL" || (echo "NEXT_PUBLIC_API_URL is required at build time" && exit 1)
 RUN pnpm --filter fe build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+ARG NEXT_PUBLIC_API_URL
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

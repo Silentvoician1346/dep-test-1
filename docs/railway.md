@@ -61,6 +61,10 @@ Variables:
 NEXT_PUBLIC_API_URL=https://<backend-domain>.up.railway.app
 ```
 
+Set `NEXT_PUBLIC_API_URL` before deploying the frontend. Next.js inlines
+`NEXT_PUBLIC_*` variables into the browser bundle during `next build`, so adding
+or changing this variable requires a frontend redeploy.
+
 Generate a public domain after the first successful deploy.
 
 Do not set the frontend root directory to `/fe` when using `fe/Dockerfile`.
