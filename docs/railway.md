@@ -45,8 +45,7 @@ In service settings:
 
 - Service name: `fe`
 - Root directory: leave unset, or set it to `/`
-- Build command: `pnpm --filter fe build`
-- Start command: `pnpm --filter fe start`
+- Dockerfile path variable: `RAILWAY_DOCKERFILE_PATH=fe/Dockerfile`
 - Watch paths:
   - `/fe/**`
   - `/package.json`
@@ -60,6 +59,10 @@ NEXT_PUBLIC_API_URL=https://<backend-domain>.up.railway.app
 ```
 
 Generate a public domain after the first successful deploy.
+
+Do not set the frontend root directory to `/fe` when using `fe/Dockerfile`.
+That Dockerfile intentionally builds from the repo root so it can use the root
+`pnpm-lock.yaml` and `pnpm-workspace.yaml`.
 
 ## Preview deployments
 

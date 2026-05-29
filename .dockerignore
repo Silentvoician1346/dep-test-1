@@ -1,0 +1,16 @@
+.git/
+.github/
+docs/
+
+node_modules/
+**/node_modules/
+
+.next/
+**/.next/
+
+bin/
+obj/
+
+.pnpm-store/
+*.log
+.DS_Store
