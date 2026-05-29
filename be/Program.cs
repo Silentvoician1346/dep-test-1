@@ -3,12 +3,15 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 const string FrontendCorsPolicy = "Frontend";
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+var port = Environment.GetEnvironmentVariable("PORT");
 var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
                       "http://localhost:3000,http://127.0.0.1:3000")
     .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
 
 builder.Services.AddControllers();
 builder.Services.AddCors(options =>
