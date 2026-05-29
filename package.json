@@ -12,6 +12,7 @@
     "dev:be": "dotnet run --project be/be.csproj --launch-profile http",
     "build:fe": "pnpm --filter fe build",
     "build:be": "dotnet build be/be.csproj",
+    "start:fe": "pnpm --filter fe start",
     "lint:fe": "pnpm --filter fe lint"
   }
 }

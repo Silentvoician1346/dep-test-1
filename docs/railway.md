@@ -46,6 +46,9 @@ In service settings:
 - Service name: `fe`
 - Root directory: leave unset, or set it to `/`
 - Dockerfile path variable: `RAILWAY_DOCKERFILE_PATH=fe/Dockerfile`
+- If Railway does not use the Dockerfile, set these explicitly:
+  - Build command: `pnpm build:fe`
+  - Start command: `pnpm start:fe`
 - Watch paths:
   - `/fe/**`
   - `/package.json`
