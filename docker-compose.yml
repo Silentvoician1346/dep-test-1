@@ -1,0 +1,22 @@
+name: dep-test-1
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: dep-test-1-postgres
+    environment:
+      POSTGRES_DB: dep_test_1
+      POSTGRES_USER: dep_test_1
+      POSTGRES_PASSWORD: dep_test_1_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dep_test_1 -d dep_test_1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
