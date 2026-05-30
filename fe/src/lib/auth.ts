@@ -17,26 +17,24 @@ export type AuthResponse = {
   user: AuthUser;
 };
 
-export type ProjectTaskReportRow = {
+export type ProjectTaskJoinRow = {
   userId: string;
-  userEmail: string;
-  userDisplayName: string;
   projectId: string;
   projectName: string;
   projectStatus: string;
   taskId: string;
   taskTitle: string;
   taskIsDone: boolean;
+  taskCreatedAt: string;
 };
 
-export type ProjectTaskReportResponse = {
-  totalRows: number;
-  rows: ProjectTaskReportRow[];
+export type PagedResponse<T> = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  items: T[];
 };
-
-export function getApiUrl() {
-  return apiUrl;
-}
 
 export function getStoredAccessToken() {
   if (typeof window === "undefined") {
@@ -92,24 +90,20 @@ export async function fetchCurrentUser(accessToken: string) {
   return (await response.json()) as AuthUser;
 }
 
-export async function fetchProjectTaskReport(accessToken: string) {
+export async function fetchProjectTaskJoins(accessToken: string) {
   if (!apiUrl) {
     throw new Error("NEXT_PUBLIC_API_URL is not configured");
   }
 
-  const response = await fetch(`${apiUrl}/api/admin/project-task-report`, {
+  const response = await fetch(`${apiUrl}/api/projects/task-joins`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
 
-  if (response.status === 403) {
-    throw new Error("Admin role is required");
-  }
-
   if (!response.ok) {
     throw new Error(`Request failed with status ${response.status}`);
   }
 
-  return (await response.json()) as ProjectTaskReportResponse;
+  return (await response.json()) as PagedResponse<ProjectTaskJoinRow>;
 }

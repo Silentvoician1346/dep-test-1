@@ -1,7 +1,10 @@
 using be.Data;
+using be.Models;
 using be.Options;
+using be.Security;
 using be.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -62,6 +65,21 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 builder.Services
+    .AddIdentityCore<AppUser>(options =>
+    {
+        options.User.RequireUniqueEmail = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Lockout.AllowedForNewUsers = true;
+    })
+    .AddRoles<IdentityRole<Guid>>()
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+builder.Services.AddScoped<IPasswordHasher<AppUser>, AppPasswordHasher>();
+builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -91,8 +109,8 @@ builder.Services
                     return;
                 }
 
-                var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
-                var user = await db.AppUsers.AsNoTracking().FirstOrDefaultAsync(candidate => candidate.Id == userId);
+                var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<AppUser>>();
+                var user = await userManager.FindByIdAsync(userId.ToString());
 
                 if (user is null || !user.IsActive)
                 {
@@ -100,13 +118,16 @@ builder.Services
                     return;
                 }
 
-                var claims = new[]
+                var roles = await userManager.GetRolesAsync(user);
+                var claims = new List<Claim>
                 {
                     new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Name, user.DisplayName),
-                    new Claim(ClaimTypes.Role, user.Role)
+                    new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
+                    new Claim(ClaimTypes.Name, user.DisplayName)
                 };
+
+                claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
+
                 var identity = new ClaimsIdentity(
                     claims,
                     JwtBearerDefaults.AuthenticationScheme,
@@ -117,7 +138,10 @@ builder.Services
             }
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AppAuthorizationPolicies.AdminOnly, policy => policy.RequireRole(AppRoles.Admin));
+});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
@@ -167,8 +191,11 @@ if (runDatabaseCommand)
 
     if (runSeedCommand)
     {
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+
         Console.WriteLine("Seeding demo data...");
-        await DatabaseSeeder.SeedAsync(db);
+        await DatabaseSeeder.SeedAsync(db, userManager, roleManager);
         Console.WriteLine("Demo data seeded.");
     }
 
@@ -197,7 +224,10 @@ if (shouldApplyMigrations || shouldSeedDevelopmentData)
 
     if (shouldSeedDevelopmentData)
     {
-        await DatabaseSeeder.SeedAsync(db);
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+
+        await DatabaseSeeder.SeedAsync(db, userManager, roleManager);
     }
 }
 

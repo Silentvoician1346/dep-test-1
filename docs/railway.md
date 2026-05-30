@@ -52,7 +52,8 @@ dotnet be.dll migrate-and-seed
 
 Railway runs the pre-deploy command after building the image and before starting
 the new deployment. The command applies EF Core migrations and creates demo seed
-data before the API starts.
+data before the API starts. Auth data is stored in the ASP.NET Core Identity
+`AspNet*` tables.
 
 The demo seed creates these users:
 
@@ -83,8 +84,10 @@ dotnet be.dll migrate-and-seed
 Useful URLs after deploy:
 
 ```text
-https://<backend-domain>.up.railway.app/api/message
 https://<backend-domain>.up.railway.app/api/auth/login
+https://<backend-domain>.up.railway.app/api/projects
+https://<backend-domain>.up.railway.app/api/projects/task-joins
+https://<backend-domain>.up.railway.app/api/announcements
 https://<backend-domain>.up.railway.app/swagger
 ```
 
@@ -129,7 +132,7 @@ Start without PR environments until production deploys work.
 When ready, enable Railway PR Environments and Focused PR Environments:
 
 - Frontend watch paths: `/fe/**`, `/package.json`, `/pnpm-lock.yaml`, `/pnpm-workspace.yaml`
-- Backend watch paths: `/be/**`, `/dep-test-1.slnx`
+- Backend watch paths: `/be/**`
 
 ## CI
 

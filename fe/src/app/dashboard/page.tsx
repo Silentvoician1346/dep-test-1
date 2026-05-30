@@ -8,21 +8,20 @@ import { Button } from "@/components/ui/button";
 import {
   clearAccessToken,
   fetchCurrentUser,
-  fetchProjectTaskReport,
-  getApiUrl,
+  fetchProjectTaskJoins,
   getStoredAccessToken,
   type AuthUser,
-  type ProjectTaskReportResponse,
+  type PagedResponse,
+  type ProjectTaskJoinRow,
 } from "@/lib/auth";
 
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
-  const [isLoadingMessage, setIsLoadingMessage] = useState(false);
-  const [isLoadingReport, setIsLoadingReport] = useState(false);
-  const [projectTaskReport, setProjectTaskReport] =
-    useState<ProjectTaskReportResponse | null>(null);
+  const [isLoadingJoins, setIsLoadingJoins] = useState(false);
+  const [projectTaskJoins, setProjectTaskJoins] =
+    useState<PagedResponse<ProjectTaskJoinRow> | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -65,7 +64,7 @@ export default function DashboardPage() {
     };
   }, [router]);
 
-  async function showBackendMessage() {
+  async function loadProjectTaskJoins() {
     const accessToken = getStoredAccessToken();
 
     if (!accessToken) {
@@ -73,60 +72,20 @@ export default function DashboardPage() {
       return;
     }
 
-    const apiUrl = getApiUrl();
-
-    if (!apiUrl) {
-      toast.error("NEXT_PUBLIC_API_URL is not configured");
-      return;
-    }
-
-    setIsLoadingMessage(true);
+    setIsLoadingJoins(true);
 
     try {
-      const response = await fetch(`${apiUrl}/api/message`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+      const report = await fetchProjectTaskJoins(accessToken);
 
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const message = await response.text();
-      toast.success(message);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to reach backend";
-
-      toast.error(message);
-    } finally {
-      setIsLoadingMessage(false);
-    }
-  }
-
-  async function loadProjectTaskReport() {
-    const accessToken = getStoredAccessToken();
-
-    if (!accessToken) {
-      router.replace("/login");
-      return;
-    }
-
-    setIsLoadingReport(true);
-
-    try {
-      const report = await fetchProjectTaskReport(accessToken);
-
-      setProjectTaskReport(report);
-      toast.success("Database report loaded");
+      setProjectTaskJoins(report);
+      toast.success("Project task data loaded");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to load database data";
 
       toast.error(message);
     } finally {
-      setIsLoadingReport(false);
+      setIsLoadingJoins(false);
     }
   }
 
@@ -182,37 +141,23 @@ export default function DashboardPage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold">Backend Check</h2>
           <div>
-            <Button onClick={showBackendMessage} disabled={isLoadingMessage}>
-              {isLoadingMessage ? "Loading..." : "Show backend message"}
-            </Button>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <div>
-            <h2 className="text-base font-semibold">Database Report</h2>
+            <h2 className="text-base font-semibold">Project Task Join</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Admin-only joined data from users, projects, and tasks.
+              Joined project and task data scoped by your current role.
             </p>
           </div>
           <div>
             <Button
-              onClick={loadProjectTaskReport}
-              disabled={isLoadingReport || user?.role !== "admin"}
+              onClick={loadProjectTaskJoins}
+              disabled={isLoadingJoins}
             >
-              {isLoadingReport ? "Loading..." : "Load project task report"}
+              {isLoadingJoins ? "Loading..." : "Load project task joins"}
             </Button>
           </div>
-          {user?.role !== "admin" ? (
-            <p className="text-sm text-muted-foreground">
-              Sign in as an admin user to load this report.
-            </p>
-          ) : null}
-          {projectTaskReport ? (
+          {projectTaskJoins ? (
             <pre className="max-h-96 overflow-auto rounded-md border border-border bg-muted p-4 text-xs leading-relaxed text-muted-foreground">
-              {JSON.stringify(projectTaskReport, null, 2)}
+              {JSON.stringify(projectTaskJoins, null, 2)}
             </pre>
           ) : null}
         </section>

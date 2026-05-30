@@ -1,12 +1,13 @@
 using be.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace be.Data;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
+    : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>(options)
 {
-    public DbSet<AppUser> AppUsers => Set<AppUser>();
-
     public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
@@ -19,15 +20,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<AppUser>(entity =>
         {
-            entity.ToTable("app_user");
+            entity.HasIndex(user => user.NormalizedEmail).HasDatabaseName("EmailIndex").IsUnique();
 
-            entity.HasKey(user => user.Id);
-            entity.HasIndex(user => user.Email).IsUnique();
-
-            entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
+            entity.Property(user => user.Email).HasMaxLength(256).IsRequired();
+            entity.Property(user => user.UserName).HasMaxLength(256).IsRequired();
             entity.Property(user => user.DisplayName).HasMaxLength(120).IsRequired();
-            entity.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
-            entity.Property(user => user.Role).HasMaxLength(50).IsRequired();
             entity.Property(user => user.CreatedAt).HasColumnType("timestamp with time zone").IsRequired();
         });
 

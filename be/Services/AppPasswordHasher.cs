@@ -1,32 +1,36 @@
 using System.Security.Cryptography;
+using be.Models;
+using Microsoft.AspNetCore.Identity;
 
 namespace be.Services;
 
-public static class PasswordHasher
+public sealed class AppPasswordHasher : IPasswordHasher<AppUser>
 {
-    private const int SaltSize = 16;
-    private const int KeySize = 32;
-    private const int Iterations = 100_000;
+    private readonly PasswordHasher<AppUser> identityHasher = new();
 
-    public static string Hash(string password)
+    public string HashPassword(AppUser user, string password)
     {
-        var salt = RandomNumberGenerator.GetBytes(SaltSize);
-        var key = Rfc2898DeriveBytes.Pbkdf2(
-            password,
-            salt,
-            Iterations,
-            HashAlgorithmName.SHA256,
-            KeySize);
-
-        return string.Join(
-            '$',
-            "pbkdf2-sha256",
-            Iterations,
-            Convert.ToBase64String(salt),
-            Convert.ToBase64String(key));
+        return identityHasher.HashPassword(user, password);
     }
 
-    public static bool Verify(string password, string passwordHash)
+    public PasswordVerificationResult VerifyHashedPassword(
+        AppUser user,
+        string hashedPassword,
+        string providedPassword)
+    {
+        var identityResult = identityHasher.VerifyHashedPassword(user, hashedPassword, providedPassword);
+
+        if (identityResult != PasswordVerificationResult.Failed)
+        {
+            return identityResult;
+        }
+
+        return VerifyLegacyPbkdf2Hash(providedPassword, hashedPassword)
+            ? PasswordVerificationResult.SuccessRehashNeeded
+            : PasswordVerificationResult.Failed;
+    }
+
+    private static bool VerifyLegacyPbkdf2Hash(string password, string passwordHash)
     {
         try
         {

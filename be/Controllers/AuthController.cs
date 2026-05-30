@@ -1,16 +1,19 @@
 using System.Security.Claims;
-using be.Data;
 using be.Models;
+using be.Security;
 using be.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace be.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : ControllerBase
+public class AuthController(
+    UserManager<AppUser> userManager,
+    RoleManager<IdentityRole<Guid>> roleManager,
+    JwtTokenService jwtTokenService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -33,9 +36,9 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
             return BadRequest(new { message = "Password must be at least 8 characters." });
         }
 
-        var alreadyExists = await db.AppUsers.AnyAsync(user => user.Email == email);
+        var alreadyExists = await userManager.FindByEmailAsync(email);
 
-        if (alreadyExists)
+        if (alreadyExists is not null)
         {
             return Conflict(new { message = "A user with that email already exists." });
         }
@@ -44,17 +47,28 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
         {
             Id = Guid.NewGuid(),
             Email = email,
+            UserName = email,
             DisplayName = request.DisplayName.Trim(),
-            PasswordHash = PasswordHasher.Hash(request.Password),
-            Role = "member",
+            EmailConfirmed = true,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
 
-        db.AppUsers.Add(user);
-        await db.SaveChangesAsync();
+        var createResult = await userManager.CreateAsync(user, request.Password);
 
-        return Ok(CreateAuthResponse(user));
+        if (!createResult.Succeeded)
+        {
+            return BadRequest(ToIdentityErrorResponse(createResult, "Unable to create user."));
+        }
+
+        var roleResult = await AddToRoleAsync(user, AppRoles.Member);
+
+        if (!roleResult.Succeeded)
+        {
+            return BadRequest(ToIdentityErrorResponse(roleResult, "Unable to assign user role."));
+        }
+
+        return Ok(await CreateAuthResponseAsync(user));
     }
 
     [AllowAnonymous]
@@ -68,16 +82,16 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
-        var user = await db.AppUsers.SingleOrDefaultAsync(candidate => candidate.Email == email);
+        var user = await userManager.FindByEmailAsync(email);
 
         if (user is null ||
             !user.IsActive ||
-            !PasswordHasher.Verify(request.Password, user.PasswordHash))
+            !await userManager.CheckPasswordAsync(user, request.Password))
         {
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
-        return Ok(CreateAuthResponse(user));
+        return Ok(await CreateAuthResponseAsync(user));
     }
 
     [Authorize]
@@ -91,19 +105,17 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
             return Unauthorized();
         }
 
-        var user = await db.AppUsers
-            .AsNoTracking()
-            .SingleOrDefaultAsync(candidate => candidate.Id == userId);
+        var user = await userManager.FindByIdAsync(userId.Value.ToString());
 
         if (user is null || !user.IsActive)
         {
             return Unauthorized();
         }
 
-        return ToUserProfile(user);
+        return await ToUserProfileAsync(user);
     }
 
-    [Authorize(Roles = "admin")]
+    [Authorize(Policy = AppAuthorizationPolicies.AdminOnly)]
     [HttpGet("admin-check")]
     public ActionResult<object> AdminCheck()
     {
@@ -111,11 +123,11 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
         {
             message = "Current user is authorized as admin.",
             userId = User.FindFirstValue(ClaimTypes.NameIdentifier),
-            role = User.FindFirstValue(ClaimTypes.Role)
+            roles = User.FindAll(ClaimTypes.Role).Select(claim => claim.Value).ToArray()
         });
     }
 
-    private AuthResponse CreateAuthResponse(AppUser user)
+    private async Task<AuthResponse> CreateAuthResponseAsync(AppUser user)
     {
         var token = jwtTokenService.CreateToken(user);
 
@@ -123,17 +135,39 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
             token.AccessToken,
             "Bearer",
             token.ExpiresAt,
-            ToUserProfile(user));
+            await ToUserProfileAsync(user));
     }
 
-    private static UserProfileResponse ToUserProfile(AppUser user)
+    private async Task<UserProfileResponse> ToUserProfileAsync(AppUser user)
     {
         return new UserProfileResponse(
             user.Id,
-            user.Email,
+            user.Email ?? string.Empty,
             user.DisplayName,
-            user.Role,
+            await GetPrimaryRoleAsync(user),
             user.IsActive);
+    }
+
+    private async Task<string> GetPrimaryRoleAsync(AppUser user)
+    {
+        var roles = await userManager.GetRolesAsync(user);
+
+        return AppRoles.GetPrimaryRole(roles);
+    }
+
+    private async Task<IdentityResult> AddToRoleAsync(AppUser user, string roleName)
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+        {
+            var createRoleResult = await roleManager.CreateAsync(new IdentityRole<Guid>(roleName));
+
+            if (!createRoleResult.Succeeded)
+            {
+                return createRoleResult;
+            }
+        }
+
+        return await userManager.AddToRoleAsync(user, roleName);
     }
 
     private Guid? GetCurrentUserId()
@@ -151,6 +185,19 @@ public class AuthController(AppDbContext db, JwtTokenService jwtTokenService) : 
         }
 
         return email.Trim().ToLowerInvariant();
+    }
+
+    private static object ToIdentityErrorResponse(IdentityResult result, string message)
+    {
+        return new
+        {
+            message,
+            errors = result.Errors.Select(error => new
+            {
+                error.Code,
+                error.Description
+            })
+        };
     }
 }
 
