@@ -9,11 +9,16 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);
+var command = args.FirstOrDefault(arg => arg is "serve" or "migrate" or "seed" or "migrate-and-seed") ?? "serve";
+var builderArgs = args.Where(arg => arg != command).ToArray();
+var builder = WebApplication.CreateBuilder(builderArgs);
 
 // Add services to the container.
 
 const string FrontendCorsPolicy = "Frontend";
+var runMigrationsCommand = command is "migrate" or "migrate-and-seed";
+var runSeedCommand = command is "seed" or "migrate-and-seed";
+var runDatabaseCommand = runMigrationsCommand || runSeedCommand;
 var port = Environment.GetEnvironmentVariable("PORT");
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 var jwtSigningKeyBytes = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
@@ -147,6 +152,28 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+if (runDatabaseCommand)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    if (runMigrationsCommand)
+    {
+        Console.WriteLine("Applying EF Core migrations...");
+        await db.Database.MigrateAsync();
+        Console.WriteLine("EF Core migrations applied.");
+    }
+
+    if (runSeedCommand)
+    {
+        Console.WriteLine("Seeding demo data...");
+        await DatabaseSeeder.SeedAsync(db);
+        Console.WriteLine("Demo data seeded.");
+    }
+
+    return;
+}
 
 // Configure the HTTP request pipeline.
 app.MapOpenApi();

@@ -62,14 +62,13 @@ ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
 Jwt__Issuer=dep-test-1
 Jwt__Audience=dep-test-1-api
 Jwt__SigningKey=<at-least-32-byte-random-secret>
-Database__ApplyMigrations=true
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
-For demo seed users only:
+For this demo, set the backend pre-deploy command to:
 
 ```text
-Database__SeedDevelopmentData=true
+dotnet be.dll migrate-and-seed
 ```
 
 ## Dependency checks

@@ -29,7 +29,6 @@ ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
 Jwt__Issuer=dep-test-1
 Jwt__Audience=dep-test-1-api
 Jwt__SigningKey=<at-least-32-byte-random-secret>
-Database__ApplyMigrations=true
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
@@ -45,26 +44,41 @@ Generate `Jwt__SigningKey` with a long random value, for example:
 openssl rand -base64 48
 ```
 
-`Database__ApplyMigrations=true` lets the ASP.NET service apply EF Core
-migrations at startup. Without this, a new Railway PostgreSQL database will not
-have the `app_user`, `project`, `project_task`, or `announcement` tables.
-
-For demo data only, you can also set:
+Set this pre-deploy command on the backend service:
 
 ```text
-Database__SeedDevelopmentData=true
+dotnet be.dll migrate-and-seed
 ```
 
-This creates the local seed users:
+Railway runs the pre-deploy command after building the image and before starting
+the new deployment. The command applies EF Core migrations and creates demo seed
+data before the API starts.
+
+The demo seed creates these users:
 
 ```text
 admin@example.local / Admin123!
 member@example.local / Member123!
 ```
 
-Do not enable seed data for a real production app.
+This is acceptable for a Railway demo service. Do not run demo seed data for a
+real production app.
 
 Railway provides `PORT`; the API binds to `0.0.0.0:$PORT`.
+
+The backend Docker image defaults to:
+
+```text
+dotnet be.dll serve
+```
+
+The same image also supports:
+
+```text
+dotnet be.dll migrate
+dotnet be.dll seed
+dotnet be.dll migrate-and-seed
+```
 
 Useful URLs after deploy:
 
