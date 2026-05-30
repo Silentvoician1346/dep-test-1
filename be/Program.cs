@@ -16,6 +16,7 @@ var builder = WebApplication.CreateBuilder(args);
 const string FrontendCorsPolicy = "Frontend";
 var port = Environment.GetEnvironmentVariable("PORT");
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+var jwtSigningKeyBytes = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
 var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
                       Environment.GetEnvironmentVariable("FRONTEND_URL") ??
                       "http://localhost:3000,http://127.0.0.1:3000")
@@ -35,16 +36,22 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
     throw new InvalidOperationException("Jwt:Issuer, Jwt:Audience, and Jwt:SigningKey must be configured.");
 }
 
+if (jwtSigningKeyBytes.Length < 32)
+{
+    throw new InvalidOperationException("Jwt:SigningKey must be at least 32 UTF-8 bytes for HS256.");
+}
+
 builder.Services.AddControllers();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    var connectionString = DatabaseConnectionString.Resolve(builder.Configuration);
 
     if (string.IsNullOrWhiteSpace(connectionString))
     {
-        throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
+        throw new InvalidOperationException(
+            "Database connection is not configured. Set ConnectionStrings__DefaultConnection or DATABASE_URL.");
     }
 
     options.UseNpgsql(connectionString);
@@ -62,7 +69,7 @@ builder.Services
             ValidAudience = jwtOptions.Audience,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(jwtSigningKeyBytes),
             ClockSkew = TimeSpan.FromMinutes(1),
             NameClaimType = ClaimTypes.Name,
             RoleClaimType = ClaimTypes.Role
@@ -146,14 +153,29 @@ app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-if (app.Environment.IsDevelopment())
+var shouldApplyMigrations = app.Environment.IsDevelopment() ||
+                            builder.Configuration.GetValue("Database:ApplyMigrations", false);
+var shouldSeedDevelopmentData = app.Environment.IsDevelopment() ||
+                                builder.Configuration.GetValue("Database:SeedDevelopmentData", false);
+
+if (shouldApplyMigrations || shouldSeedDevelopmentData)
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    await db.Database.MigrateAsync();
-    await DatabaseSeeder.SeedAsync(db);
+    if (shouldApplyMigrations)
+    {
+        await db.Database.MigrateAsync();
+    }
 
+    if (shouldSeedDevelopmentData)
+    {
+        await DatabaseSeeder.SeedAsync(db);
+    }
+}
+
+if (app.Environment.IsDevelopment())
+{
     app.UseHttpsRedirection();
 }
 

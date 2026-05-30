@@ -26,10 +26,43 @@ Variables:
 
 ```text
 ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
+Jwt__Issuer=dep-test-1
+Jwt__Audience=dep-test-1-api
+Jwt__SigningKey=<at-least-32-byte-random-secret>
+Database__ApplyMigrations=true
+DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
-Set this variable on the backend service. The value must be the frontend origin
-only, with protocol and without a path.
+Set these variables on the backend service. `ALLOWED_ORIGINS` must be the
+frontend origin only, with protocol and without a path.
+
+Use the exact frontend origin in `ALLOWED_ORIGINS`. Do not include `/login`,
+`/dashboard`, or a trailing path.
+
+Generate `Jwt__SigningKey` with a long random value, for example:
+
+```sh
+openssl rand -base64 48
+```
+
+`Database__ApplyMigrations=true` lets the ASP.NET service apply EF Core
+migrations at startup. Without this, a new Railway PostgreSQL database will not
+have the `app_user`, `project`, `project_task`, or `announcement` tables.
+
+For demo data only, you can also set:
+
+```text
+Database__SeedDevelopmentData=true
+```
+
+This creates the local seed users:
+
+```text
+admin@example.local / Admin123!
+member@example.local / Member123!
+```
+
+Do not enable seed data for a real production app.
 
 Railway provides `PORT`; the API binds to `0.0.0.0:$PORT`.
 
@@ -37,6 +70,7 @@ Useful URLs after deploy:
 
 ```text
 https://<backend-domain>.up.railway.app/api/message
+https://<backend-domain>.up.railway.app/api/auth/login
 https://<backend-domain>.up.railway.app/swagger
 ```
 

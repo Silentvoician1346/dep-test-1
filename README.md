@@ -53,6 +53,25 @@ Use `POST /api/auth/login` to get a bearer token, then send it as:
 Authorization: Bearer <access-token>
 ```
 
+## Railway backend variables
+
+Set these on the `be` service:
+
+```text
+ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
+Jwt__Issuer=dep-test-1
+Jwt__Audience=dep-test-1-api
+Jwt__SigningKey=<at-least-32-byte-random-secret>
+Database__ApplyMigrations=true
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+For demo seed users only:
+
+```text
+Database__SeedDevelopmentData=true
+```
+
 ## Dependency checks
 
 Run installs from the repo root so pnpm creates one root lockfile:
