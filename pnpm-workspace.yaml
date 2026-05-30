@@ -9,6 +9,8 @@ blockExoticSubdeps: true
 strictDepBuilds: true
 
 overrides:
+  "minimatch@10.2.5>brace-expansion": 5.0.6
+  postcss: 8.5.15
   sharp: 0.34.4
 
 allowBuilds:

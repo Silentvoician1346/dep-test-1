@@ -33,10 +33,15 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit frontend dependencies
+        run: pnpm audit --audit-level moderate
+
       - name: Lint frontend
         run: pnpm lint:fe
 
       - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5000
         run: pnpm build:fe
 
       - name: Set up .NET
@@ -47,5 +52,14 @@ jobs:
       - name: Restore backend
         run: dotnet restore be/be.csproj
 
+      - name: Audit backend dependencies
+        run: dotnet list be/be.csproj package --vulnerable --include-transitive
+
       - name: Build backend
         run: dotnet build be/be.csproj --configuration Release --no-restore
+
+      - name: Build frontend Docker image
+        run: docker build -f fe/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://localhost:5000 .
+
+      - name: Build backend Docker image
+        run: docker build -f be/Dockerfile be
