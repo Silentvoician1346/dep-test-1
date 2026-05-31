@@ -18,7 +18,7 @@ public sealed class AppPasswordHasher : IPasswordHasher<AppUser>
         string hashedPassword,
         string providedPassword)
     {
-        var identityResult = identityHasher.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        var identityResult = VerifyIdentityHash(user, hashedPassword, providedPassword);
 
         if (identityResult != PasswordVerificationResult.Failed)
         {
@@ -28,6 +28,21 @@ public sealed class AppPasswordHasher : IPasswordHasher<AppUser>
         return VerifyLegacyPbkdf2Hash(providedPassword, hashedPassword)
             ? PasswordVerificationResult.SuccessRehashNeeded
             : PasswordVerificationResult.Failed;
+    }
+
+    private PasswordVerificationResult VerifyIdentityHash(
+        AppUser user,
+        string hashedPassword,
+        string providedPassword)
+    {
+        try
+        {
+            return identityHasher.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
+        catch (Exception error) when (error is FormatException or ArgumentException)
+        {
+            return PasswordVerificationResult.Failed;
+        }
     }
 
     private static bool VerifyLegacyPbkdf2Hash(string password, string passwordHash)

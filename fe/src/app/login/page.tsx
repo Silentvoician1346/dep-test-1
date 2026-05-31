@@ -1,11 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { getSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { getStoredAccessToken, login, storeAccessToken } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,9 +14,17 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (getStoredAccessToken()) {
-      router.replace("/dashboard");
-    }
+    let isCurrent = true;
+
+    getSession().then((session) => {
+      if (isCurrent && session) {
+        router.replace("/dashboard");
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -24,10 +32,22 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const result = await login(email, password);
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
 
-      storeAccessToken(result.accessToken);
-      toast.success(`Signed in as ${result.user.displayName}`);
+      if (!result || result.error) {
+        throw new Error("Invalid email or password");
+      }
+
+      const session = await getSession();
+
+      toast.success(
+        `Signed in as ${session?.user.displayName ?? email.trim()}`,
+      );
+      router.refresh();
       router.replace("/dashboard");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Login failed";

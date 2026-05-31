@@ -112,12 +112,14 @@ In service settings:
 Variables:
 
 ```text
-NEXT_PUBLIC_API_URL=https://<backend-domain>.up.railway.app
+BACKEND_API_URL=https://<backend-domain>.up.railway.app
+NEXTAUTH_URL=https://<frontend-domain>.up.railway.app
+NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
 ```
 
-Set `NEXT_PUBLIC_API_URL` before deploying the frontend. Next.js inlines
-`NEXT_PUBLIC_*` variables into the browser bundle during `next build`, so adding
-or changing this variable requires a frontend redeploy.
+Set these as runtime variables on the frontend service. The browser calls the
+Next.js API routes; only the Next.js server needs the backend URL and backend
+bearer token.
 
 Generate a public domain after the first successful deploy.
 

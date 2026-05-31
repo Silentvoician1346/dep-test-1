@@ -6,27 +6,27 @@ This project is a small full-stack monorepo with three main parts:
 - `be`: an ASP.NET Core backend API.
 - `postgres`: a PostgreSQL database.
 
-The frontend talks only to the ASP.NET backend. The backend handles authentication, authorization, validation, and database access through EF Core.
+The browser talks to the Next.js frontend. Next.js acts as a BFF for dashboard reads and calls the ASP.NET backend server-side. The backend handles authentication, authorization, validation, and database access through EF Core.
 
 ## Frontend Flow
 
 `/` redirects to `/dashboard`.
 
-`/dashboard` checks for a stored access token. If no token exists, the user is redirected to `/login`. If a token exists, the frontend calls:
+`/dashboard` uses React Query to call the Next.js BFF route:
 
 ```text
-GET /api/auth/me
+GET /api/dashboard?projectsPage=1&projectsPageSize=10&tasksPage=1&tasksPageSize=10&announcementsPage=1&announcementsPageSize=10
 ```
 
-If the token is valid, the dashboard is shown. If not, the token is cleared and the user is redirected to `/login`.
+The BFF route reads the Auth.js session cookie, extracts the server-side backend JWT, calls the ASP.NET API, and returns nested projects with project tasks plus announcements in one browser fetch.
 
-The login page calls:
+The login page calls the Auth.js credentials route:
 
 ```text
-POST /api/auth/login
+POST /api/auth/callback/credentials
 ```
 
-On success, it stores the bearer token and redirects to `/dashboard`.
+Auth.js forwards the email and password to the ASP.NET login endpoint, stores the returned backend JWT in its encrypted HttpOnly session cookie, and redirects to `/dashboard`. Browser code never stores the backend JWT.
 
 ## Backend Flow
 
@@ -66,6 +66,8 @@ Protected requests use:
 ```text
 Authorization: Bearer <access-token>
 ```
+
+The bearer token is sent by Next.js BFF routes, not browser code.
 
 Users and roles are stored in the standard ASP.NET Core Identity tables:
 
@@ -185,7 +187,9 @@ pnpm dev:fe
 For local development, the frontend should use:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
+BACKEND_API_URL=http://localhost:5000
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
 ```
 
 Development seed users:

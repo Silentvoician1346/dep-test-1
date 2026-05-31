@@ -55,6 +55,19 @@ Authorization: Bearer <access-token>
 
 The backend supports multiple Identity roles per user. The frontend displays one primary role to keep the dashboard clear.
 
+## Frontend variables
+
+The frontend uses Auth.js as a cookie-backed BFF. Browser code calls the
+Next.js API routes, and those routes call the ASP.NET API with the backend JWT.
+
+```text
+BACKEND_API_URL=http://localhost:5000
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
+```
+
+`BACKEND_API_URL` defaults to `http://localhost:5000` for local development.
+
 ## Railway backend variables
 
 Set these on the `be` service:
