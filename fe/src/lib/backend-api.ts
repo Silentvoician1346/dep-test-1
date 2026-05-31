@@ -7,8 +7,10 @@ import type {
 } from "@/lib/api-types";
 
 type BackendRequestOptions = RequestInit & {
-  accessToken?: string;
+  sessionId?: string;
 };
+
+export const backendSessionHeaderName = "X-Session-Id";
 
 export class BackendApiError extends Error {
   constructor(
@@ -31,12 +33,12 @@ function getBackendApiUrl() {
 
 async function requestBackend<T>(
   path: string,
-  { accessToken, ...init }: BackendRequestOptions = {},
+  { sessionId, ...init }: BackendRequestOptions = {},
 ) {
   const headers = new Headers(init.headers);
 
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`);
+  if (sessionId) {
+    headers.set(backendSessionHeaderName, sessionId);
   }
 
   if (init.body && !headers.has("Content-Type")) {
@@ -56,7 +58,13 @@ async function requestBackend<T>(
     );
   }
 
-  return (await response.json()) as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 function toQueryString(params: Record<string, string | number | undefined>) {
@@ -73,43 +81,54 @@ function toQueryString(params: Record<string, string | number | undefined>) {
   return value ? `?${value}` : "";
 }
 
-export function loginToBackend(email: string, password: string) {
+export function loginToBackend(
+  email: string,
+  password: string,
+  rememberMe: boolean,
+) {
   return requestBackend<BackendAuthResponse>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, rememberMe }),
+  });
+}
+
+export function logoutBackend(sessionId: string) {
+  return requestBackend<void>("/api/auth/logout", {
+    method: "POST",
+    sessionId,
   });
 }
 
 export function fetchProjects(
-  accessToken: string,
+  sessionId: string,
   page: number,
   pageSize: number,
 ) {
   return requestBackend<PagedResponse<Project>>(
     `/api/projects${toQueryString({ page, pageSize })}`,
-    { accessToken },
+    { sessionId },
   );
 }
 
 export function fetchProjectTasks(
-  accessToken: string,
+  sessionId: string,
   projectId: string,
   page: number,
   pageSize: number,
 ) {
   return requestBackend<PagedResponse<ProjectTask>>(
     `/api/project-tasks${toQueryString({ projectId, page, pageSize })}`,
-    { accessToken },
+    { sessionId },
   );
 }
 
 export function fetchAnnouncements(
-  accessToken: string,
+  sessionId: string,
   page: number,
   pageSize: number,
 ) {
   return requestBackend<PagedResponse<Announcement>>(
     `/api/announcements${toQueryString({ page, pageSize })}`,
-    { accessToken },
+    { sessionId },
   );
 }

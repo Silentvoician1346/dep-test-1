@@ -84,17 +84,17 @@ export async function GET(request: NextRequest) {
     req: request,
     secret: getRequiredAuthSecret(),
   });
-  const accessToken =
-    typeof token?.backendAccessToken === "string"
-      ? token.backendAccessToken
+  const sessionId =
+    typeof token?.backendSessionId === "string"
+      ? token.backendSessionId
       : null;
   const user = token?.user as AuthUser | undefined;
 
-  if (!token || !accessToken || !user) {
+  if (!token || !sessionId || !user) {
     return errorResponse("Authentication is required.", 401);
   }
 
-  if (isExpired(token.backendAccessTokenExpiresAt)) {
+  if (isExpired(token.backendSessionExpiresAt)) {
     return errorResponse("Session expired.", 401);
   }
 
@@ -102,9 +102,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const [projects, announcements] = await Promise.all([
-      fetchProjects(accessToken, query.projectsPage, query.projectsPageSize),
+      fetchProjects(sessionId, query.projectsPage, query.projectsPageSize),
       fetchAnnouncements(
-        accessToken,
+        sessionId,
         query.announcementsPage,
         query.announcementsPageSize,
       ),
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       projects.items.map(async (project) => ({
         ...project,
         tasks: await fetchProjectTasks(
-          accessToken,
+          sessionId,
           project.id,
           query.tasksPage,
           query.tasksPageSize,

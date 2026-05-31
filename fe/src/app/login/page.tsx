@@ -11,6 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("admin@example.local");
   const [password, setPassword] = useState("Admin123!");
+  const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function LoginPage() {
       const result = await signIn("credentials", {
         email,
         password,
+        rememberMe: rememberMe ? "true" : "false",
         redirect: false,
       });
 
@@ -100,6 +102,16 @@ export default function LoginPage() {
             required
           />
         </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(event) => setRememberMe(event.target.checked)}
+            className="size-4 rounded border-input accent-foreground"
+          />
+          Remember me
+        </label>
 
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Signing in..." : "Sign in"}

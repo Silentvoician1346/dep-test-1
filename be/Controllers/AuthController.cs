@@ -13,7 +13,7 @@ namespace be.Controllers;
 public class AuthController(
     UserManager<AppUser> userManager,
     RoleManager<IdentityRole<Guid>> roleManager,
-    JwtTokenService jwtTokenService) : ControllerBase
+    IAuthSessionStore authSessionStore) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
@@ -68,7 +68,7 @@ public class AuthController(
             return BadRequest(ToIdentityErrorResponse(roleResult, "Unable to assign user role."));
         }
 
-        return Ok(await CreateAuthResponseAsync(user));
+        return Ok(await CreateAuthResponseAsync(user, request.RememberMe));
     }
 
     [AllowAnonymous]
@@ -91,7 +91,20 @@ public class AuthController(
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
-        return Ok(await CreateAuthResponseAsync(user));
+        return Ok(await CreateAuthResponseAsync(user, request.RememberMe));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(
+        [FromHeader(Name = SessionAuthenticationDefaults.SessionIdHeaderName)] string? sessionId)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            await authSessionStore.DeleteAsync(sessionId, HttpContext.RequestAborted);
+        }
+
+        return NoContent();
     }
 
     [Authorize]
@@ -127,14 +140,13 @@ public class AuthController(
         });
     }
 
-    private async Task<AuthResponse> CreateAuthResponseAsync(AppUser user)
+    private async Task<AuthResponse> CreateAuthResponseAsync(AppUser user, bool rememberMe)
     {
-        var token = jwtTokenService.CreateToken(user);
+        var session = await authSessionStore.CreateAsync(user, rememberMe, HttpContext.RequestAborted);
 
         return new AuthResponse(
-            token.AccessToken,
-            "Bearer",
-            token.ExpiresAt,
+            session.SessionId,
+            session.ExpiresAt,
             await ToUserProfileAsync(user));
     }
 
@@ -201,14 +213,13 @@ public class AuthController(
     }
 }
 
-public sealed record RegisterRequest(string? Email, string? DisplayName, string? Password);
+public sealed record RegisterRequest(string? Email, string? DisplayName, string? Password, bool RememberMe = false);
 
-public sealed record LoginRequest(string? Email, string? Password);
+public sealed record LoginRequest(string? Email, string? Password, bool RememberMe = false);
 
 public sealed record AuthResponse(
-    string AccessToken,
-    string TokenType,
-    DateTime ExpiresAt,
+    string SessionId,
+    DateTimeOffset ExpiresAt,
     UserProfileResponse User);
 
 public sealed record UserProfileResponse(

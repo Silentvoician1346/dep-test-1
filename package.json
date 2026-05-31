@@ -8,7 +8,7 @@
     "pnpm": ">=11 <12"
   },
   "scripts": {
-    "dev:db": "docker compose up -d postgres",
+    "dev:db": "docker compose up -d postgres redis",
     "stop:db": "docker compose down",
     "dev:fe": "pnpm --filter fe dev",
     "dev:be": "dotnet run --project be/be.csproj --launch-profile http",

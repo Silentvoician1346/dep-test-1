@@ -14,15 +14,15 @@ declare module "next-auth" {
   }
 
   interface User extends DefaultUser, AppSessionUser {
-    backendAccessToken: string;
-    backendAccessTokenExpiresAt: string;
+    backendSessionId: string;
+    backendSessionExpiresAt: string;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
-    backendAccessToken?: string;
-    backendAccessTokenExpiresAt?: string;
+    backendSessionId?: string;
+    backendSessionExpiresAt?: string;
     user?: AppSessionUser;
   }
 }

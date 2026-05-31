@@ -5,6 +5,7 @@ This project is a small full-stack monorepo with three main parts:
 - `fe`: a Next.js frontend.
 - `be`: an ASP.NET Core backend API.
 - `postgres`: a PostgreSQL database.
+- `redis`: a Redis session store.
 
 The browser talks to the Next.js frontend. Next.js acts as a BFF for dashboard reads and calls the ASP.NET backend server-side. The backend handles authentication, authorization, validation, and database access through EF Core.
 
@@ -18,7 +19,7 @@ The browser talks to the Next.js frontend. Next.js acts as a BFF for dashboard r
 GET /api/dashboard?projectsPage=1&projectsPageSize=10&tasksPage=1&tasksPageSize=10&announcementsPage=1&announcementsPageSize=10
 ```
 
-The BFF route reads the Auth.js session cookie, extracts the server-side backend JWT, calls the ASP.NET API, and returns nested projects with project tasks plus announcements in one browser fetch.
+The BFF route reads the Auth.js session cookie, extracts the backend session id server-side, calls the ASP.NET API with `X-Session-Id`, and returns nested projects with project tasks plus announcements in one browser fetch.
 
 The login page calls the Auth.js credentials route:
 
@@ -26,7 +27,7 @@ The login page calls the Auth.js credentials route:
 POST /api/auth/callback/credentials
 ```
 
-Auth.js forwards the email and password to the ASP.NET login endpoint, stores the returned backend JWT in its encrypted HttpOnly session cookie, and redirects to `/dashboard`. Browser code never stores the backend JWT.
+Auth.js forwards the email, password, and remember-me choice to the ASP.NET login endpoint, stores the returned backend session id in its encrypted HttpOnly session cookie, and redirects to `/dashboard`. Browser code never stores backend credentials in localStorage.
 
 ## Backend Flow
 
@@ -37,7 +38,7 @@ On startup:
 1. ASP.NET Core registers controllers.
 2. EF Core is configured with PostgreSQL.
 3. ASP.NET Core Identity is configured for users, roles, claims, logins, and tokens.
-4. JWT bearer authentication is configured.
+4. Redis-backed session authentication is configured.
 5. CORS is configured for the frontend origin.
 6. Swagger/OpenAPI is enabled.
 7. Controllers are mapped as HTTP endpoints.
@@ -57,6 +58,7 @@ Auth endpoints:
 ```text
 POST /api/auth/register
 POST /api/auth/login
+POST /api/auth/logout
 GET /api/auth/me
 GET /api/auth/admin-check
 ```
@@ -64,10 +66,10 @@ GET /api/auth/admin-check
 Protected requests use:
 
 ```text
-Authorization: Bearer <access-token>
+X-Session-Id: <session-id>
 ```
 
-The bearer token is sent by Next.js BFF routes, not browser code.
+The session id is sent by Next.js BFF routes, not browser code.
 
 Users and roles are stored in the standard ASP.NET Core Identity tables:
 
@@ -81,7 +83,7 @@ AspNetUserLogins
 AspNetUserTokens
 ```
 
-JWT validation runs in ASP.NET authentication middleware. After the JWT is valid, the backend reloads the current user from `AspNetUsers`. If the user is missing or inactive, the request is rejected. All current Identity roles are added to claims before authorization runs.
+Session validation runs in ASP.NET authentication middleware. The backend hashes the opaque session id, checks Redis, and reloads the current user from `AspNetUsers`. If the session is expired, the user is missing, or the user is inactive, the request is rejected. All current Identity roles are added to claims before authorization runs.
 
 One user can hold multiple roles through `AspNetUserRoles`. The backend uses all assigned roles for authorization, but `/api/auth/me` returns one primary display role so the frontend stays simple. Primary role priority is `admin`, then `member`, then any future role alphabetically.
 
@@ -166,7 +168,7 @@ Deleting a project cascades to its project tasks.
 
 ## Local Development
 
-Start the database:
+Start PostgreSQL and Redis:
 
 ```sh
 pnpm dev:db

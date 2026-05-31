@@ -7,8 +7,7 @@ export type AuthUser = {
 };
 
 export type BackendAuthResponse = {
-  accessToken: string;
-  tokenType: string;
+  sessionId: string;
   expiresAt: string;
   user: AuthUser;
 };

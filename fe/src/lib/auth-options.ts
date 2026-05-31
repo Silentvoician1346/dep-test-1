@@ -3,15 +3,15 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 import type { AuthUser, BackendAuthResponse } from "@/lib/api-types";
 import { authSecret } from "@/lib/auth-secret";
-import { loginToBackend } from "@/lib/backend-api";
+import { loginToBackend, logoutBackend } from "@/lib/backend-api";
 
-type BackendTokenUser = User &
+type BackendSessionUser = User &
   AuthUser & {
-    backendAccessToken: string;
-    backendAccessTokenExpiresAt: string;
+    backendSessionId: string;
+    backendSessionExpiresAt: string;
   };
 
-function toBackendTokenUser(response: BackendAuthResponse): BackendTokenUser {
+function toBackendSessionUser(response: BackendAuthResponse): BackendSessionUser {
   return {
     id: response.user.id,
     name: response.user.displayName,
@@ -19,9 +19,13 @@ function toBackendTokenUser(response: BackendAuthResponse): BackendTokenUser {
     displayName: response.user.displayName,
     role: response.user.role,
     isActive: response.user.isActive,
-    backendAccessToken: response.accessToken,
-    backendAccessTokenExpiresAt: response.expiresAt,
+    backendSessionId: response.sessionId,
+    backendSessionExpiresAt: response.expiresAt,
   };
+}
+
+function parseRememberMe(value: string | undefined) {
+  return value === "true" || value === "on" || value === "1";
 }
 
 export const authOptions: AuthOptions = {
@@ -31,7 +35,7 @@ export const authOptions: AuthOptions = {
   },
   session: {
     strategy: "jwt",
-    maxAge: 60 * 60,
+    maxAge: 14 * 24 * 60 * 60,
   },
   providers: [
     CredentialsProvider({
@@ -45,17 +49,24 @@ export const authOptions: AuthOptions = {
           label: "Password",
           type: "password",
         },
+        rememberMe: {
+          label: "Remember me",
+          type: "checkbox",
+        },
       },
       async authorize(credentials) {
         const email = credentials?.email?.trim();
         const password = credentials?.password;
+        const rememberMe = parseRememberMe(credentials?.rememberMe);
 
         if (!email || !password) {
           return null;
         }
 
         try {
-          return toBackendTokenUser(await loginToBackend(email, password));
+          return toBackendSessionUser(
+            await loginToBackend(email, password, rememberMe),
+          );
         } catch {
           return null;
         }
@@ -65,11 +76,10 @@ export const authOptions: AuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        const backendUser = user as BackendTokenUser;
+        const backendUser = user as BackendSessionUser;
 
-        token.backendAccessToken = backendUser.backendAccessToken;
-        token.backendAccessTokenExpiresAt =
-          backendUser.backendAccessTokenExpiresAt;
+        token.backendSessionId = backendUser.backendSessionId;
+        token.backendSessionExpiresAt = backendUser.backendSessionExpiresAt;
         token.user = {
           id: backendUser.id,
           email: backendUser.email,
@@ -91,7 +101,29 @@ export const authOptions: AuthOptions = {
         };
       }
 
+      if (typeof token.backendSessionExpiresAt === "string") {
+        session.expires = token.backendSessionExpiresAt;
+      }
+
       return session;
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      const sessionId =
+        typeof token?.backendSessionId === "string"
+          ? token.backendSessionId
+          : null;
+
+      if (!sessionId) {
+        return;
+      }
+
+      try {
+        await logoutBackend(sessionId);
+      } catch {
+        // Auth.js should still clear its cookie when backend session cleanup fails.
+      }
     },
   },
 };

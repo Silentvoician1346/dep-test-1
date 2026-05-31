@@ -3,14 +3,10 @@ using be.Models;
 using be.Options;
 using be.Security;
 using be.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 var command = args.FirstOrDefault(arg => arg is "serve" or "migrate" or "seed" or "migrate-and-seed") ?? "serve";
 var builderArgs = args.Where(arg => arg != command).ToArray();
@@ -23,8 +19,11 @@ var runMigrationsCommand = command is "migrate" or "migrate-and-seed";
 var runSeedCommand = command is "seed" or "migrate-and-seed";
 var runDatabaseCommand = runMigrationsCommand || runSeedCommand;
 var port = Environment.GetEnvironmentVariable("PORT");
-var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
-var jwtSigningKeyBytes = Encoding.UTF8.GetBytes(jwtOptions.SigningKey);
+var authSessionOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ??
+                         new AuthSessionOptions();
+var redisConnectionString = RedisConnectionString.Resolve(
+    builder.Configuration,
+    authSessionOptions.RedisConnectionString);
 var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
                       Environment.GetEnvironmentVariable("FRONTEND_URL") ??
                       "http://localhost:3000,http://127.0.0.1:3000")
@@ -37,21 +36,31 @@ if (!string.IsNullOrWhiteSpace(port))
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 }
 
-if (string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
-    string.IsNullOrWhiteSpace(jwtOptions.Audience) ||
-    string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
+if (string.IsNullOrWhiteSpace(redisConnectionString) && !runDatabaseCommand)
 {
-    throw new InvalidOperationException("Jwt:Issuer, Jwt:Audience, and Jwt:SigningKey must be configured.");
-}
-
-if (jwtSigningKeyBytes.Length < 32)
-{
-    throw new InvalidOperationException("Jwt:SigningKey must be at least 32 UTF-8 bytes for HS256.");
+    throw new InvalidOperationException(
+        "Redis connection is not configured. Set AuthSession:RedisConnectionString, ConnectionStrings:Redis, or REDIS_URL.");
 }
 
 builder.Services.AddControllers();
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
+builder.Services.PostConfigure<AuthSessionOptions>(options =>
+{
+    options.RedisConnectionString = redisConnectionString;
+});
+if (string.IsNullOrWhiteSpace(redisConnectionString))
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+else
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnectionString;
+    });
+}
+
+builder.Services.AddSingleton<IAuthSessionStore, RedisAuthSessionStore>();
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     var connectionString = DatabaseConnectionString.Resolve(builder.Configuration);
@@ -80,64 +89,10 @@ builder.Services
     .AddDefaultTokenProviders();
 builder.Services.AddScoped<IPasswordHasher<AppUser>, AppPasswordHasher>();
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.MapInboundClaims = false;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidateAudience = true,
-            ValidAudience = jwtOptions.Audience,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(jwtSigningKeyBytes),
-            ClockSkew = TimeSpan.FromMinutes(1),
-            NameClaimType = ClaimTypes.Name,
-            RoleClaimType = ClaimTypes.Role
-        };
-        options.Events = new JwtBearerEvents
-        {
-            OnTokenValidated = async context =>
-            {
-                var userIdValue = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
-
-                if (!Guid.TryParse(userIdValue, out var userId))
-                {
-                    context.Fail("Token subject is not a valid user id.");
-                    return;
-                }
-
-                var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<AppUser>>();
-                var user = await userManager.FindByIdAsync(userId.ToString());
-
-                if (user is null || !user.IsActive)
-                {
-                    context.Fail("User is inactive or no longer exists.");
-                    return;
-                }
-
-                var roles = await userManager.GetRolesAsync(user);
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                    new Claim(ClaimTypes.Email, user.Email ?? string.Empty),
-                    new Claim(ClaimTypes.Name, user.DisplayName)
-                };
-
-                claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
-
-                var identity = new ClaimsIdentity(
-                    claims,
-                    JwtBearerDefaults.AuthenticationScheme,
-                    ClaimTypes.Name,
-                    ClaimTypes.Role);
-
-                context.Principal = new ClaimsPrincipal(identity);
-            }
-        };
-    });
+    .AddAuthentication(SessionAuthenticationDefaults.AuthenticationScheme)
+    .AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(
+        SessionAuthenticationDefaults.AuthenticationScheme,
+        _ => { });
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(AppAuthorizationPolicies.AdminOnly, policy => policy.RequireRole(AppRoles.Admin));
@@ -155,19 +110,17 @@ builder.Services.AddCors(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    options.AddSecurityDefinition("Session", new OpenApiSecurityScheme
     {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
+        Name = SessionAuthenticationDefaults.SessionIdHeaderName,
+        Type = SecuritySchemeType.ApiKey,
         In = ParameterLocation.Header,
-        Description = "Enter a JWT bearer token."
+        Description = "Enter the opaque session id returned by /api/auth/login."
     });
     options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
     {
         {
-            new OpenApiSecuritySchemeReference("Bearer", document, null),
+            new OpenApiSecuritySchemeReference("Session", document, null),
             []
         }
     });

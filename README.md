@@ -1,6 +1,6 @@
 # dep-test-1
 
-Monorepo with a Next.js frontend in `fe` and an ASP.NET Core controller API in `be`. The backend uses PostgreSQL, EF Core, ASP.NET Core Identity, and JWT bearer authentication.
+Monorepo with a Next.js frontend in `fe` and an ASP.NET Core controller API in `be`. The backend uses PostgreSQL, Redis, EF Core, ASP.NET Core Identity, and Redis-backed session authentication.
 
 ## Run from the root
 
@@ -8,7 +8,7 @@ Monorepo with a Next.js frontend in `fe` and an ASP.NET Core controller API in `
 pnpm dev:db
 ```
 
-Starts the local PostgreSQL database at `localhost:5432`.
+Starts local PostgreSQL at `localhost:5432` and Redis at `localhost:6379`.
 
 ```sh
 pnpm dev:be
@@ -28,7 +28,9 @@ Starts the frontend at `http://localhost:3000`.
 - Login page: `http://localhost:3000/login`
 - Dashboard page: `http://localhost:3000/dashboard`
 - PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
 - API login endpoint: `http://localhost:5000/api/auth/login`
+- API logout endpoint: `http://localhost:5000/api/auth/logout`
 - API current user endpoint: `http://localhost:5000/api/auth/me`
 - API admin check endpoint: `http://localhost:5000/api/auth/admin-check`
 - API projects endpoint: `http://localhost:5000/api/projects`
@@ -47,10 +49,10 @@ admin@example.local / Admin123!
 member@example.local / Member123!
 ```
 
-Use `POST /api/auth/login` to get a bearer token, then send it as:
+Use `POST /api/auth/login` to create a Redis-backed session, then send it as:
 
 ```text
-Authorization: Bearer <access-token>
+X-Session-Id: <session-id>
 ```
 
 The backend supports multiple Identity roles per user. The frontend displays one primary role to keep the dashboard clear.
@@ -58,7 +60,7 @@ The backend supports multiple Identity roles per user. The frontend displays one
 ## Frontend variables
 
 The frontend uses Auth.js as a cookie-backed BFF. Browser code calls the
-Next.js API routes, and those routes call the ASP.NET API with the backend JWT.
+Next.js API routes, and those routes call the ASP.NET API with `X-Session-Id`.
 
 ```text
 BACKEND_API_URL=http://localhost:5000
@@ -74,10 +76,11 @@ Set these on the `be` service:
 
 ```text
 ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
-Jwt__Issuer=dep-test-1
-Jwt__Audience=dep-test-1-api
-Jwt__SigningKey=<at-least-32-byte-random-secret>
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+AuthSession__IdleTimeoutMinutes=120
+AuthSession__AbsoluteExpirationDays=7
+AuthSession__RememberMeAbsoluteExpirationDays=14
 ```
 
 For this demo, set the backend pre-deploy command to:

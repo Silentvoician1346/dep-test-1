@@ -1,14 +1,17 @@
 # Railway Deployment
 
-This repo is intended to deploy as one Railway project with two services:
+This repo is intended to deploy as one Railway project with these services:
 
 - `fe`: Next.js frontend
 - `be`: ASP.NET Core API
+- PostgreSQL
+- Redis
 
 ## Prerequisites
 
 - Push the repo to GitHub.
 - Keep the root `pnpm-lock.yaml` committed.
+- Add Railway PostgreSQL and Redis services to the project.
 - The frontend service should build from the repo root so pnpm can use the root workspace and lockfile.
 - The backend service should use `/be` as its root directory so Railway detects `be/Dockerfile`.
 
@@ -26,10 +29,11 @@ Variables:
 
 ```text
 ALLOWED_ORIGINS=https://<frontend-domain>.up.railway.app
-Jwt__Issuer=dep-test-1
-Jwt__Audience=dep-test-1-api
-Jwt__SigningKey=<at-least-32-byte-random-secret>
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+AuthSession__IdleTimeoutMinutes=120
+AuthSession__AbsoluteExpirationDays=7
+AuthSession__RememberMeAbsoluteExpirationDays=14
 ```
 
 Set these variables on the backend service. `ALLOWED_ORIGINS` must be the
@@ -37,12 +41,6 @@ frontend origin only, with protocol and without a path.
 
 Use the exact frontend origin in `ALLOWED_ORIGINS`. Do not include `/login`,
 `/dashboard`, or a trailing path.
-
-Generate `Jwt__SigningKey` with a long random value, for example:
-
-```sh
-openssl rand -base64 48
-```
 
 Set this pre-deploy command on the backend service:
 
@@ -53,7 +51,7 @@ dotnet be.dll migrate-and-seed
 Railway runs the pre-deploy command after building the image and before starting
 the new deployment. The command applies EF Core migrations and creates demo seed
 data before the API starts. Auth data is stored in the ASP.NET Core Identity
-`AspNet*` tables.
+`AspNet*` tables. Active sessions are stored in Redis and revoked on logout.
 
 The demo seed creates these users:
 
@@ -119,7 +117,7 @@ NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
 
 Set these as runtime variables on the frontend service. The browser calls the
 Next.js API routes; only the Next.js server needs the backend URL and backend
-bearer token.
+session id.
 
 Generate a public domain after the first successful deploy.
 
