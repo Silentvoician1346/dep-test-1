@@ -46,9 +46,7 @@ export default function LoginPage() {
 
       const session = await getSession();
 
-      toast.success(
-        `Signed in as ${session?.user.displayName ?? email.trim()}`,
-      );
+      toast.success(`Signed in as ${session?.user.displayName ?? email.trim()}`);
       router.refresh();
       router.replace("/dashboard");
     } catch (error) {
@@ -110,7 +108,7 @@ export default function LoginPage() {
             onChange={(event) => setRememberMe(event.target.checked)}
             className="size-4 rounded border-input accent-foreground"
           />
-          Remember me
+          Remember Me
         </label>
 
         <Button type="submit" disabled={isSubmitting}>
