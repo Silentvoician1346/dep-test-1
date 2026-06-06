@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using be.Contracts;
+using be.Extensions;
 using be.Models;
 using be.Security;
 using be.Services;
@@ -23,24 +25,36 @@ public class AuthController(
 
         if (email is null)
         {
-            return BadRequest(new { message = "A valid email is required." });
+            return this.ApiValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.Email)] = ["A valid email is required."]
+            });
         }
 
         if (string.IsNullOrWhiteSpace(request.DisplayName))
         {
-            return BadRequest(new { message = "Display name is required." });
+            return this.ApiValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.DisplayName)] = ["Display name is required."]
+            });
         }
 
         if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
         {
-            return BadRequest(new { message = "Password must be at least 8 characters." });
+            return this.ApiValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.Password)] = ["Password must be at least 8 characters."]
+            });
         }
 
         var alreadyExists = await userManager.FindByEmailAsync(email);
 
         if (alreadyExists is not null)
         {
-            return Conflict(new { message = "A user with that email already exists." });
+            return this.ApiProblem(
+                StatusCodes.Status409Conflict,
+                "A user with that email already exists.",
+                ApiProblemTypes.Conflict);
         }
 
         var user = new AppUser
@@ -58,14 +72,18 @@ public class AuthController(
 
         if (!createResult.Succeeded)
         {
-            return BadRequest(ToIdentityErrorResponse(createResult, "Unable to create user."));
+            return this.ApiValidationProblem(
+                ToIdentityErrors(createResult),
+                "Unable to create user.");
         }
 
         var roleResult = await AddToRoleAsync(user, AppRoles.Member);
 
         if (!roleResult.Succeeded)
         {
-            return BadRequest(ToIdentityErrorResponse(roleResult, "Unable to assign user role."));
+            return this.ApiValidationProblem(
+                ToIdentityErrors(roleResult),
+                "Unable to assign user role.");
         }
 
         return Ok(await CreateAuthResponseAsync(user, request.RememberMe));
@@ -79,7 +97,10 @@ public class AuthController(
 
         if (email is null || string.IsNullOrWhiteSpace(request.Password))
         {
-            return Unauthorized(new { message = "Invalid email or password." });
+            return this.ApiProblem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid email or password.",
+                ApiProblemTypes.InvalidCredentials);
         }
 
         var user = await userManager.FindByEmailAsync(email);
@@ -88,7 +109,10 @@ public class AuthController(
             !user.IsActive ||
             !await userManager.CheckPasswordAsync(user, request.Password))
         {
-            return Unauthorized(new { message = "Invalid email or password." });
+            return this.ApiProblem(
+                StatusCodes.Status401Unauthorized,
+                "Invalid email or password.",
+                ApiProblemTypes.InvalidCredentials);
         }
 
         return Ok(await CreateAuthResponseAsync(user, request.RememberMe));
@@ -115,14 +139,20 @@ public class AuthController(
 
         if (userId is null)
         {
-            return Unauthorized();
+            return this.ApiProblem(
+                StatusCodes.Status401Unauthorized,
+                "Authentication is required.",
+                ApiProblemTypes.AuthenticationRequired);
         }
 
         var user = await userManager.FindByIdAsync(userId.Value.ToString());
 
         if (user is null || !user.IsActive)
         {
-            return Unauthorized();
+            return this.ApiProblem(
+                StatusCodes.Status401Unauthorized,
+                "Authentication is required.",
+                ApiProblemTypes.AuthenticationRequired);
         }
 
         return await ToUserProfileAsync(user);
@@ -199,17 +229,13 @@ public class AuthController(
         return email.Trim().ToLowerInvariant();
     }
 
-    private static object ToIdentityErrorResponse(IdentityResult result, string message)
+    private static Dictionary<string, string[]> ToIdentityErrors(IdentityResult result)
     {
-        return new
-        {
-            message,
-            errors = result.Errors.Select(error => new
-            {
-                error.Code,
-                error.Description
-            })
-        };
+        return result.Errors
+            .GroupBy(error => error.Code)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.Description).ToArray());
     }
 }
 

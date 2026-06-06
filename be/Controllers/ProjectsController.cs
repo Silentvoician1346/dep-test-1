@@ -113,7 +113,10 @@ public class ProjectsController(AppDbContext db) : ControllerBase
 
         if (!ownerExists)
         {
-            return BadRequest(new { message = "Owner user does not exist or is inactive." });
+            return this.ApiValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.OwnerId)] = ["Owner user does not exist or is inactive."]
+            });
         }
 
         var project = new Project

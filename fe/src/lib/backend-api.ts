@@ -5,6 +5,11 @@ import type {
   Project,
   ProjectTask,
 } from "@/lib/api-types";
+import {
+  ApiRequestError,
+  type ApiProblem,
+  parseApiProblem,
+} from "@/lib/api-problem";
 
 type BackendRequestOptions = RequestInit & {
   sessionId?: string;
@@ -12,23 +17,27 @@ type BackendRequestOptions = RequestInit & {
 
 export const backendSessionHeaderName = "X-Session-Id";
 
-export class BackendApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-  ) {
-    super(message);
+export class BackendApiError extends ApiRequestError {
+  constructor(problem: ApiProblem, status: number) {
+    super(problem, status);
     this.name = "BackendApiError";
   }
 }
 
-function getBackendApiUrl() {
+export function getBackendApiUrl() {
   const value =
     process.env.BACKEND_API_URL ??
-    process.env.API_URL ??
-    "http://localhost:5000";
+    process.env.API_URL;
 
-  return value.replace(/\/$/, "");
+  if (value) {
+    return value.replace(/\/$/, "");
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("BACKEND_API_URL is required in production.");
+  }
+
+  return "http://localhost:5000";
 }
 
 async function requestBackend<T>(
@@ -51,18 +60,34 @@ async function requestBackend<T>(
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    throw new BackendApiError(
-      `Backend request failed with status ${response.status}`,
-      response.status,
-    );
-  }
-
   if (response.status === 204) {
     return undefined as T;
   }
 
   const text = await response.text();
+
+  if (!response.ok) {
+    let problem: ApiProblem | null = null;
+
+    if (text) {
+      try {
+        problem = parseApiProblem(JSON.parse(text), response.status);
+      } catch {
+        problem = {
+          title: text,
+          status: response.status,
+        };
+      }
+    }
+
+    throw new BackendApiError(
+      problem ?? {
+        title: `Backend request failed with status ${response.status}`,
+        status: response.status,
+      },
+      response.status,
+    );
+  }
 
   return (text ? JSON.parse(text) : undefined) as T;
 }

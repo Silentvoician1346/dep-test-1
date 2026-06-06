@@ -3,6 +3,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
 
+import { ApiRequestError } from "@/lib/api-problem";
+
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -10,7 +12,17 @@ export function Providers({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             refetchOnWindowFocus: false,
-            retry: false,
+            retry: (failureCount, error) => {
+              if (
+                error instanceof ApiRequestError &&
+                error.status >= 400 &&
+                error.status < 500
+              ) {
+                return false;
+              }
+
+              return failureCount < 2;
+            },
           },
         },
       }),

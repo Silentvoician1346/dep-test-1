@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using be.Contracts;
 using be.Data;
 using be.Models;
 using be.Options;
@@ -5,6 +7,7 @@ using be.Security;
 using be.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 
@@ -30,6 +33,20 @@ var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
     .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
     .Select(origin => origin.TrimEnd('/'))
     .ToArray();
+var sentryDsn = builder.Configuration["Sentry:Dsn"] ??
+                Environment.GetEnvironmentVariable("SENTRY_DSN");
+
+if (builder.Environment.IsProduction() && !string.IsNullOrWhiteSpace(sentryDsn))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.Environment = "production";
+        options.MinimumEventLevel = LogLevel.Error;
+        options.SendDefaultPii = false;
+        options.TracesSampleRate = 0;
+    });
+}
 
 if (!string.IsNullOrWhiteSpace(port))
 {
@@ -43,6 +60,63 @@ if (string.IsNullOrWhiteSpace(redisConnectionString) && !runDatabaseCommand)
 }
 
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        var statusCode = context.ProblemDetails.Status ?? context.HttpContext.Response.StatusCode;
+
+        context.ProblemDetails.Status = statusCode;
+        context.ProblemDetails.Instance ??= context.HttpContext.Request.Path;
+        context.ProblemDetails.Extensions["traceId"] =
+            Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
+
+        if (context.ProblemDetails.Type is not null &&
+            context.ProblemDetails.Type != "about:blank")
+        {
+            return;
+        }
+
+        (context.ProblemDetails.Type, context.ProblemDetails.Title) = statusCode switch
+        {
+            StatusCodes.Status401Unauthorized => (
+                ApiProblemTypes.AuthenticationRequired,
+                "Authentication is required."),
+            StatusCodes.Status403Forbidden => (
+                ApiProblemTypes.AccessDenied,
+                "Access denied."),
+            StatusCodes.Status404NotFound => (
+                ApiProblemTypes.NotFound,
+                "Resource not found."),
+            StatusCodes.Status500InternalServerError => (
+                ApiProblemTypes.UnexpectedError,
+                "An unexpected error occurred."),
+            _ => (context.ProblemDetails.Type, context.ProblemDetails.Title)
+        };
+    };
+});
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var problem = new ValidationProblemDetails(context.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Validation failed.",
+            Type = ApiProblemTypes.ValidationFailed,
+            Detail = "One or more validation errors occurred.",
+            Instance = context.HttpContext.Request.Path
+        };
+
+        problem.Extensions["traceId"] =
+            Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
+
+        return new BadRequestObjectResult(problem)
+        {
+            ContentTypes = { "application/problem+json" }
+        };
+    };
+});
 builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
 builder.Services.PostConfigure<AuthSessionOptions>(options =>
 {
@@ -156,6 +230,9 @@ if (runDatabaseCommand)
 }
 
 // Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+
 app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();

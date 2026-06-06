@@ -7,6 +7,10 @@ import type {
   DashboardQuery,
   DashboardResponse,
 } from "@/lib/api-types";
+import {
+  apiProblemTypes,
+  type ApiProblem,
+} from "@/lib/api-problem";
 import { getRequiredAuthSecret } from "@/lib/auth-secret";
 import {
   BackendApiError,
@@ -14,6 +18,7 @@ import {
   fetchProjects,
   fetchProjectTasks,
 } from "@/lib/backend-api";
+import { reportError } from "@/lib/sentry-reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -75,32 +80,68 @@ function isExpired(expiresAt?: string) {
   return Date.parse(expiresAt) <= Date.now() + 5_000;
 }
 
-function errorResponse(message: string, status: number) {
-  return NextResponse.json({ message }, { status });
+function createTraceId(request: NextRequest) {
+  return request.headers.get("x-request-id") ?? crypto.randomUUID();
+}
+
+function problemResponse(
+  request: NextRequest,
+  status: number,
+  title: string,
+  type: string,
+  detail?: string,
+) {
+  const traceId = createTraceId(request);
+  const problem: ApiProblem = {
+    type,
+    title,
+    status,
+    detail,
+    instance: request.nextUrl.pathname,
+    traceId,
+  };
+
+  return NextResponse.json(problem, {
+    status,
+    headers: {
+      "Content-Type": "application/problem+json",
+      "X-Request-Id": traceId,
+    },
+  });
 }
 
 export async function GET(request: NextRequest) {
-  const token = await getToken({
-    req: request,
-    secret: getRequiredAuthSecret(),
-  });
-  const sessionId =
-    typeof token?.backendSessionId === "string"
-      ? token.backendSessionId
-      : null;
-  const user = token?.user as AuthUser | undefined;
-
-  if (!token || !sessionId || !user) {
-    return errorResponse("Authentication is required.", 401);
-  }
-
-  if (isExpired(token.backendSessionExpiresAt)) {
-    return errorResponse("Session expired.", 401);
-  }
-
-  const query = readDashboardQuery(request.nextUrl.searchParams);
-
   try {
+    const token = await getToken({
+      req: request,
+      secret: getRequiredAuthSecret(),
+    });
+    const sessionId =
+      typeof token?.backendSessionId === "string"
+        ? token.backendSessionId
+        : null;
+    const user = token?.user as AuthUser | undefined;
+
+    if (!token || !sessionId || !user) {
+      return problemResponse(
+        request,
+        401,
+        "Authentication is required.",
+        apiProblemTypes.authenticationRequired,
+      );
+    }
+
+    if (isExpired(token.backendSessionExpiresAt)) {
+      return problemResponse(
+        request,
+        401,
+        "Session expired.",
+        apiProblemTypes.authenticationRequired,
+        "Sign in again to continue.",
+      );
+    }
+
+    const query = readDashboardQuery(request.nextUrl.searchParams);
     const [projects, announcements] = await Promise.all([
       fetchProjects(sessionId, query.projectsPage, query.projectsPageSize),
       fetchAnnouncements(
@@ -135,13 +176,76 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error) {
     if (error instanceof BackendApiError) {
-      if (error.status === 401 || error.status === 403) {
-        return errorResponse("Authentication is required.", 401);
+      if (error.status === 401) {
+        return problemResponse(
+          request,
+          401,
+          "Authentication is required.",
+          apiProblemTypes.authenticationRequired,
+          "Sign in again to continue.",
+        );
       }
 
-      return errorResponse(error.message, error.status >= 500 ? 502 : error.status);
+      if (error.status === 403) {
+        return problemResponse(
+          request,
+          403,
+          "Access denied.",
+          apiProblemTypes.accessDenied,
+          "Your account does not have permission to load this dashboard data.",
+        );
+      }
+
+      if (error.status >= 500) {
+        reportError(error, {
+          message: "[dashboard] Backend request failed",
+          tags: {
+            area: "dashboard",
+            operation: "load-dashboard",
+            status: error.status,
+            upstream: "backend",
+          },
+          extra: {
+            backendProblemType: error.problem.type,
+            backendTraceId: error.problem.traceId,
+            path: request.nextUrl.pathname,
+          },
+        });
+
+        return problemResponse(
+          request,
+          502,
+          "Backend service failed.",
+          apiProblemTypes.upstreamServiceError,
+          "The backend service failed while loading the dashboard.",
+        );
+      }
+
+      return problemResponse(
+        request,
+        error.status,
+        error.problem.title ?? error.message,
+        error.problem.type ?? apiProblemTypes.unexpectedError,
+        error.problem.detail,
+      );
     }
 
-    throw error;
+    reportError(error, {
+      message: "[dashboard] Unexpected dashboard BFF error",
+      tags: {
+        area: "dashboard",
+        operation: "load-dashboard",
+      },
+      extra: {
+        path: request.nextUrl.pathname,
+      },
+    });
+
+    return problemResponse(
+      request,
+      500,
+      "An unexpected error occurred.",
+      apiProblemTypes.unexpectedError,
+    );
   }
 }

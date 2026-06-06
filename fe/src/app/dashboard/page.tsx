@@ -2,19 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, LogOut, RefreshCcw } from "lucide-react";
+import { Bug, ChevronLeft, ChevronRight, LogOut, RefreshCcw } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import type { DashboardQuery, DashboardResponse } from "@/lib/api-types";
-
-class AuthenticationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AuthenticationError";
-  }
-}
+import {
+  ApiRequestError,
+  readApiProblemResponse,
+} from "@/lib/api-problem";
+import { reportError } from "@/lib/sentry-reporting";
 
 const pageSizeOptions = [10, 25, 50, 100];
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -42,24 +40,14 @@ async function fetchDashboard(query: DashboardQuery) {
     credentials: "same-origin",
   });
 
-  if (response.status === 401) {
-    throw new AuthenticationError("Authentication is required");
-  }
-
   if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
-
-    try {
-      const body = (await response.json()) as { message?: string };
-
-      if (body.message) {
-        message = body.message;
-      }
-    } catch {
-      // Keep the status message when the response body is not JSON.
-    }
-
-    throw new Error(message);
+    throw new ApiRequestError(
+      (await readApiProblemResponse(response)) ?? {
+        title: `Request failed with status ${response.status}`,
+        status: response.status,
+      },
+      response.status,
+    );
   }
 
   return (await response.json()) as DashboardResponse;
@@ -152,7 +140,10 @@ export default function DashboardPage() {
   const data = dashboard.data;
 
   useEffect(() => {
-    if (dashboard.error instanceof AuthenticationError) {
+    if (
+      dashboard.error instanceof ApiRequestError &&
+      dashboard.error.status === 401
+    ) {
       toast.error(dashboard.error.message);
       void signOut({ callbackUrl: "/login" });
     }
@@ -167,6 +158,29 @@ export default function DashboardPage() {
 
   function logout() {
     void signOut({ callbackUrl: "/login" });
+  }
+
+  function sendSentryTestError() {
+    const { sentryEventSent } = reportError(
+      new Error("Manual dashboard Sentry test error"),
+      {
+        message: "[dashboard] Manual Sentry test error",
+        tags: {
+          area: "dashboard",
+          operation: "manual-sentry-test",
+        },
+        extra: {
+          trigger: "dashboard-test-button",
+          userId: data?.user.id,
+        },
+      },
+    );
+
+    if (sentryEventSent) {
+      toast.success("Sentry test error sent.");
+    } else {
+      toast.info("Sentry is disabled outside production or without a DSN.");
+    }
   }
 
   if (dashboard.isLoading) {
@@ -197,6 +211,14 @@ export default function DashboardPage() {
               <RefreshCcw />
               {dashboard.isFetching ? "Refreshing" : "Refresh"}
             </Button>
+            <Button
+              variant="outline"
+              title="Send test error to Sentry"
+              onClick={sendSentryTestError}
+            >
+              <Bug />
+              Test Sentry
+            </Button>
             <Button variant="outline" title="Log out" onClick={logout}>
               <LogOut />
               Log out
@@ -204,7 +226,11 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        {dashboard.error && !(dashboard.error instanceof AuthenticationError) ? (
+        {dashboard.error &&
+        !(
+          dashboard.error instanceof ApiRequestError &&
+          dashboard.error.status === 401
+        ) ? (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
             {dashboard.error.message}
           </div>

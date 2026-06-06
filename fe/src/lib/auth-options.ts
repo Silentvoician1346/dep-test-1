@@ -3,7 +3,12 @@ import CredentialsProvider from "next-auth/providers/credentials";
 
 import type { AuthUser, BackendAuthResponse } from "@/lib/api-types";
 import { authSecret } from "@/lib/auth-secret";
-import { loginToBackend, logoutBackend } from "@/lib/backend-api";
+import {
+  BackendApiError,
+  loginToBackend,
+  logoutBackend,
+} from "@/lib/backend-api";
+import { reportError } from "@/lib/sentry-reporting";
 
 type BackendSessionUser = User &
   AuthUser & {
@@ -67,7 +72,23 @@ export const authOptions: AuthOptions = {
           return toBackendSessionUser(
             await loginToBackend(email, password, rememberMe),
           );
-        } catch {
+        } catch (error) {
+          reportError(error, {
+            message: "[auth] Backend credentials login failed",
+            tags: {
+              area: "auth",
+              operation: "credentials-login",
+              status: error instanceof BackendApiError ? error.status : undefined,
+            },
+            extra:
+              error instanceof BackendApiError
+                ? {
+                    backendProblemType: error.problem.type,
+                    backendTraceId: error.problem.traceId,
+                  }
+                : undefined,
+          });
+
           return null;
         }
       },

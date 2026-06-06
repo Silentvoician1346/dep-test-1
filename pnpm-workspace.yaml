@@ -15,5 +15,6 @@ overrides:
   sharp: 0.34.4
 
 allowBuilds:
+  '@sentry/cli': false
   sharp: false
   unrs-resolver: false

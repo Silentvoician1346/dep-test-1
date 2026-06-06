@@ -69,6 +69,17 @@ NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
 ```
 
 `BACKEND_API_URL` defaults to `http://localhost:5000` for local development.
+Sentry is disabled outside production builds and also stays disabled when no
+DSN is configured. To enable frontend error reporting in production, set:
+
+```text
+SENTRY_DSN=<server-side-sentry-dsn>
+NEXT_PUBLIC_SENTRY_DSN=<browser-sentry-dsn>
+NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+```
+
+Source-map upload is disabled in `fe/next.config.ts`; enable it separately only
+after approving the `@sentry/cli` dependency build script.
 
 ## Railway backend variables
 
@@ -81,6 +92,7 @@ REDIS_URL=${{Redis.REDIS_URL}}
 AuthSession__IdleTimeoutMinutes=120
 AuthSession__AbsoluteExpirationDays=7
 AuthSession__RememberMeAbsoluteExpirationDays=14
+SENTRY_DSN=<backend-sentry-dsn>
 ```
 
 For this demo, set the backend pre-deploy command to:
