@@ -10,8 +10,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
+using Sentry;
 
-var command = args.FirstOrDefault(arg => arg is "serve" or "migrate" or "seed" or "migrate-and-seed") ?? "serve";
+const string SentryHourlyCheckCommand = "sentry-hourly-check";
+var command = args.FirstOrDefault(arg => arg is "serve" or "migrate" or "seed" or "migrate-and-seed" or SentryHourlyCheckCommand) ?? "serve";
 var builderArgs = args.Where(arg => arg != command).ToArray();
 var builder = WebApplication.CreateBuilder(builderArgs);
 
@@ -21,6 +23,7 @@ const string FrontendCorsPolicy = "Frontend";
 var runMigrationsCommand = command is "migrate" or "migrate-and-seed";
 var runSeedCommand = command is "seed" or "migrate-and-seed";
 var runDatabaseCommand = runMigrationsCommand || runSeedCommand;
+var runSentryHourlyCheckCommand = command is SentryHourlyCheckCommand;
 var port = Environment.GetEnvironmentVariable("PORT");
 var authSessionOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ??
                          new AuthSessionOptions();
@@ -35,6 +38,12 @@ var allowedOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ??
     .ToArray();
 var sentryDsn = builder.Configuration["Sentry:Dsn"] ??
                 Environment.GetEnvironmentVariable("SENTRY_DSN");
+
+if (runSentryHourlyCheckCommand)
+{
+    Environment.ExitCode = await RunSentryHourlyCheckAsync(builder.Environment, sentryDsn);
+    return;
+}
 
 if (builder.Environment.IsProduction() && !string.IsNullOrWhiteSpace(sentryDsn))
 {
@@ -274,3 +283,65 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static async Task<int> RunSentryHourlyCheckAsync(IHostEnvironment environment, string? sentryDsn)
+{
+    var startedAt = DateTimeOffset.UtcNow;
+
+    if (!environment.IsProduction())
+    {
+        Console.WriteLine("Skipping Sentry hourly check outside production.");
+        return 0;
+    }
+
+    if (string.IsNullOrWhiteSpace(sentryDsn))
+    {
+        Console.Error.WriteLine("SENTRY_DSN is required for sentry-hourly-check.");
+        return 1;
+    }
+
+    using var sentry = SentrySdk.Init(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.Environment = "production";
+        options.SendDefaultPii = false;
+        options.TracesSampleRate = 0;
+    });
+
+    try
+    {
+        SentrySdk.CaptureMessage(
+            "Hourly Sentry cron check started.",
+            scope =>
+            {
+                scope.SetTag("area", "cron");
+                scope.SetTag("operation", "sentry-hourly-check");
+                scope.SetTag("schedule", "0 * * * *");
+                scope.SetExtra("utcStartedAt", startedAt.ToString("O"));
+            },
+            SentryLevel.Warning);
+
+        await SentrySdk.FlushAsync(TimeSpan.FromSeconds(10));
+        Console.WriteLine($"Sentry hourly check sent at {startedAt:O}.");
+
+        return 0;
+    }
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine(exception);
+
+        SentrySdk.CaptureException(
+            exception,
+            scope =>
+            {
+                scope.SetTag("area", "cron");
+                scope.SetTag("operation", "sentry-hourly-check");
+                scope.SetTag("failure", "exception");
+                scope.SetExtra("utcStartedAt", startedAt.ToString("O"));
+            });
+
+        await SentrySdk.FlushAsync(TimeSpan.FromSeconds(10));
+
+        return 1;
+    }
+}

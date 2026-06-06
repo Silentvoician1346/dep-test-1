@@ -34,6 +34,7 @@ REDIS_URL=${{Redis.REDIS_URL}}
 AuthSession__IdleTimeoutMinutes=120
 AuthSession__AbsoluteExpirationDays=7
 AuthSession__RememberMeAbsoluteExpirationDays=14
+SENTRY_DSN=<backend-sentry-dsn>
 ```
 
 Set these variables on the backend service. `ALLOWED_ORIGINS` must be the
@@ -77,6 +78,7 @@ The same image also supports:
 dotnet be.dll migrate
 dotnet be.dll seed
 dotnet be.dll migrate-and-seed
+dotnet be.dll sentry-hourly-check
 ```
 
 Useful URLs after deploy:
@@ -88,6 +90,30 @@ https://<backend-domain>.up.railway.app/api/projects/task-joins
 https://<backend-domain>.up.railway.app/api/announcements
 https://<backend-domain>.up.railway.app/swagger
 ```
+
+## Hourly Sentry cron service
+
+Create a separate Railway service from the same GitHub repo and backend image.
+This service does not need public networking, PostgreSQL, or Redis for the
+current check.
+
+In service settings:
+
+- Service name: `be-sentry-hourly-check`
+- Root directory: `/be`
+- Cron Schedule: `0 * * * *`
+- Start command: `dotnet be.dll sentry-hourly-check`
+
+Variables:
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+SENTRY_DSN=<backend-sentry-dsn>
+```
+
+Railway cron schedules use UTC. The command sends a warning-level Sentry message
+event each time it starts, flushes before exit, and exits non-zero if Sentry is
+not configured or the capture/flush path throws.
 
 ## Frontend service
 

@@ -106,6 +106,16 @@ For this demo, set the backend pre-deploy command to:
 dotnet be.dll migrate-and-seed
 ```
 
+For an hourly UTC Sentry heartbeat, create a separate Railway cron service from
+the backend image with:
+
+```text
+Cron Schedule: 0 * * * *
+Start command: dotnet be.dll sentry-hourly-check
+```
+
+Set `ASPNETCORE_ENVIRONMENT=Production` and `SENTRY_DSN` on that cron service.
+
 ## Dependency checks
 
 Run installs from the repo root so pnpm creates one root lockfile:
