@@ -126,6 +126,8 @@ session id.
 when the Docker image is built because Next.js inlines public browser variables
 into the frontend bundle. `fe/Dockerfile` declares them as build arguments for
 Railway's Docker builder.
+Browser Sentry events are tunneled through `/monitoring` on the frontend service
+to reduce direct client-side blocking of Sentry ingest requests.
 
 Generate a public domain after the first successful deploy.
 

@@ -12,7 +12,7 @@ import {
   ApiRequestError,
   readApiProblemResponse,
 } from "@/lib/api-problem";
-import { reportError } from "@/lib/sentry-reporting";
+import { flushReportedErrors, reportError } from "@/lib/sentry-reporting";
 
 const pageSizeOptions = [10, 25, 50, 100];
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -160,7 +160,7 @@ export default function DashboardPage() {
     void signOut({ callbackUrl: "/login" });
   }
 
-  function sendSentryTestError() {
+  async function sendSentryTestError() {
     const { sentryEventSent } = reportError(
       new Error("Manual dashboard Sentry test error"),
       {
@@ -180,6 +180,15 @@ export default function DashboardPage() {
       toast.success("Sentry test error sent.");
     } else {
       toast.info("Sentry is disabled outside production or without a DSN.");
+      return;
+    }
+
+    const flushed = await flushReportedErrors();
+
+    if (flushed) {
+      toast.success("Sentry test error queued and flushed.");
+    } else {
+      toast.error("Sentry test error was queued but did not flush.");
     }
   }
 
@@ -214,7 +223,7 @@ export default function DashboardPage() {
             <Button
               variant="outline"
               title="Send test error to Sentry"
-              onClick={sendSentryTestError}
+              onClick={() => void sendSentryTestError()}
             >
               <Bug />
               Test Sentry

@@ -27,6 +27,14 @@ export function reportError(
   return { sentryEventSent };
 }
 
+export function flushReportedErrors(timeout = 2_000) {
+  if (!isProductionEnvironment() || !Sentry.isInitialized()) {
+    return Promise.resolve(false);
+  }
+
+  return Sentry.flush(timeout);
+}
+
 function sendErrorToSentry(
   error: unknown,
   { tags, extra }: Omit<ReportErrorOptions, "message">,

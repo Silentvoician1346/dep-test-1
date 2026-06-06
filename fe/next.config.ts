@@ -9,6 +9,7 @@ export default process.env.NODE_ENV === "production"
   ? withSentryConfig(nextConfig, {
       silent: true,
       telemetry: false,
+      tunnelRoute: "/monitoring",
       sourcemaps: {
         disable: true,
       },

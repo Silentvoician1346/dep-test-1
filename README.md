@@ -83,6 +83,8 @@ after approving the `@sentry/cli` dependency build script.
 When deploying the frontend with `fe/Dockerfile`, `NEXT_PUBLIC_SENTRY_DSN` must
 exist during image build time, not only container runtime, because Next.js bakes
 public browser variables into the client bundle.
+Browser Sentry events are tunneled through `/monitoring` on the frontend service
+to reduce direct client-side blocking of Sentry ingest requests.
 
 ## Railway backend variables
 
