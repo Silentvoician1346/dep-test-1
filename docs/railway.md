@@ -113,11 +113,19 @@ Variables:
 BACKEND_API_URL=https://<backend-domain>.up.railway.app
 NEXTAUTH_URL=https://<frontend-domain>.up.railway.app
 NEXTAUTH_SECRET=<at-least-32-byte-random-secret>
+SENTRY_DSN=<frontend-server-sentry-dsn>
+NEXT_PUBLIC_SENTRY_DSN=<browser-sentry-dsn>
+NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
 ```
 
 Set these as runtime variables on the frontend service. The browser calls the
 Next.js API routes; only the Next.js server needs the backend URL and backend
 session id.
+
+`NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` must be present
+when the Docker image is built because Next.js inlines public browser variables
+into the frontend bundle. `fe/Dockerfile` declares them as build arguments for
+Railway's Docker builder.
 
 Generate a public domain after the first successful deploy.
 

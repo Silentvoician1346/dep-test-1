@@ -80,6 +80,9 @@ NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
 
 Source-map upload is disabled in `fe/next.config.ts`; enable it separately only
 after approving the `@sentry/cli` dependency build script.
+When deploying the frontend with `fe/Dockerfile`, `NEXT_PUBLIC_SENTRY_DSN` must
+exist during image build time, not only container runtime, because Next.js bakes
+public browser variables into the client bundle.
 
 ## Railway backend variables
 

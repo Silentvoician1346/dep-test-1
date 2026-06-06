@@ -15,6 +15,12 @@ RUN pnpm --filter fe... install --frozen-lockfile
 
 FROM base AS builder
 
+ARG NEXT_PUBLIC_SENTRY_DSN
+ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
+
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_ENVIRONMENT=$NEXT_PUBLIC_SENTRY_ENVIRONMENT
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/fe/node_modules ./fe/node_modules
 COPY --from=deps /app/fe/package.json ./fe/package.json
